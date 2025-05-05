@@ -1,4 +1,4 @@
-from telegram import Bot, Update
+from telegram import Bot, Update, BotCommand
 from telegram.error import TelegramError
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -11,7 +11,7 @@ from telegram.ext import Updater, CommandHandler, CallbackContext
 
 # --- Cấu hình ---
 BOT_TOKEN = '7696186849:AAHUow8NJaYAkR1Zyminds-Sh5juF0MLY2U'
-GROUP_CHAT_ID = -1002548146910  # Thay bằng ID group của bạn
+GROUP_CHAT_ID = -4040600344  # Thay bằng ID group của bạn
 
 # --- Khởi tạo bot và scheduler ---
 bot = Bot(token=BOT_TOKEN)
@@ -126,10 +126,34 @@ def add_users(update: Update, context: CallbackContext):
     else:
         update.message.reply_text("Không có user mới hợp lệ để thêm.")
 
+# --- Handler cho lệnh /help ---
+def help_command(update: Update, context: CallbackContext):
+    if update.effective_chat.id != GROUP_CHAT_ID:
+        return
 
+    help_text = (
+        "📋 *Danh sách lệnh của bot:*\n"
+        "/start - Gửi poll điểm danh ngay lập tức.\n"
+        "/add @username1 @username2 - Thêm các username vào danh sách tag khi gửi poll.\n"
+        "/help - Hiển thị hướng dẫn này.\n"
+    )
+    update.message.reply_text(help_text, parse_mode='Markdown')
+
+def set_bot_commands():
+    commands = [
+        BotCommand("start", "Gửi poll điểm danh ngay lập tức"),
+        BotCommand("add", "Thêm username vào danh sách tag"),
+        BotCommand("help", "Hiển thị hướng dẫn sử dụng bot")
+    ]
+    try:
+        bot.set_my_commands(commands)
+        print("Đã thiết lập danh sách lệnh cho bot.")
+    except TelegramError as e:
+        print(f"Lỗi khi thiết lập danh sách lệnh: {e}")
 # --- Gán handler ---
 dispatcher.add_handler(CommandHandler('start', start_command))
-dispatcher.add_handler(CommandHandler('add', add_users))  # <-- Gán thêm handler /add
+dispatcher.add_handler(CommandHandler('add', add_users))
+dispatcher.add_handler(CommandHandler('help', help_command))
 # --- Lên lịch ---
 timezone = pytz.timezone('Asia/Ho_Chi_Minh')
 
@@ -146,6 +170,7 @@ scheduler.add_job(
 # --- Log ---
 logging.basicConfig()
 # --- Bắt đầu bot ---
+set_bot_commands()
 updater.start_polling()
 # scheduler.start()
 updater.idle()
