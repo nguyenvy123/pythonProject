@@ -1,4 +1,4 @@
-from telegram import Bot, Update, BotCommand
+from telegram import Bot, Update, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
 from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -7,11 +7,18 @@ import pytz
 import logging
 import json
 
-from telegram.ext import Updater, CommandHandler, CallbackContext
+from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler
+
+# --- Cấu hình logging ---
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
 
 # --- Cấu hình ---
 BOT_TOKEN = '7696186849:AAHUow8NJaYAkR1Zyminds-Sh5juF0MLY2U'
-GROUP_CHAT_ID = -4040600344  # Thay bằng ID group của bạn
+GROUP_CHAT_ID = -1002548146910  # Thay bằng ID group của bạn
 
 # --- Khởi tạo bot và scheduler ---
 bot = Bot(token=BOT_TOKEN)
@@ -21,7 +28,8 @@ dispatcher = updater.dispatcher
 
 # --- Biến để lưu message_id của poll ---
 message_id = None
-
+# --- Biến để lưu các yêu cầu xác nhận thanh toán ---
+pending_confirmations = {}  # {message_id: username}
 # --- Đọc danh sách users từ file ---
 def load_members():
     try:
@@ -48,6 +56,10 @@ days_of_week = {
 
 # --- Danh sách members để tag ---
 members_to_tag = load_members()
+# --- Hàm xử lý tất cả cập nhật để debug ---
+def debug_update(update: Update, context: CallbackContext):
+    logger.info(f"Nhận cập nhật: {update}")
+    print(f"Nhận cập nhật: {update}")
 
 # --- Hàm gửi poll ---
 def send_poll(context: CallbackContext = None):
@@ -126,6 +138,141 @@ def add_users(update: Update, context: CallbackContext):
     else:
         update.message.reply_text("Không có user mới hợp lệ để thêm.")
 
+# --- Handler cho lệnh /paid ---
+def paid_command(update: Update, context: CallbackContext):
+    if update.effective_chat.id != GROUP_CHAT_ID:
+        return
+
+    args = context.args
+    if not args or len(args) != 1 or not args[0].startswith("@"):
+        update.message.reply_text("Vui lòng cung cấp đúng định dạng: /paid @username")
+        return
+
+    username = args[0]
+    try:
+        # Tạo inline keyboard
+        keyboard = [
+            [
+                InlineKeyboardButton("Đã thanh toán", callback_data="paid_yes"),
+                InlineKeyboardButton("Chưa thanh toán", callback_data="paid_no")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+
+        # Gửi tin nhắn xác nhận trong nhóm
+        message = bot.send_message(
+            chat_id=GROUP_CHAT_ID,
+            text=f"Yêu cầu xác nhận thanh toán cố định cho {username}.",
+            reply_markup=reply_markup
+        )
+        pending_confirmations[message.message_id] = username  # Lưu message_id và username
+        logger.info(f"Đã gửi yêu cầu xác nhận cho {username}, message_id: {message.message_id}, pending_confirmations: {pending_confirmations}")
+        print(f"Đã gửi yêu cầu xác nhận cho {username}, message_id: {message.message_id}, pending_confirmations: {pending_confirmations}")
+
+
+    except TelegramError as e:
+        logger.error(f"Lỗi khi gửi yêu cầu xác nhận: {e}")
+        print(f"Lỗi khi gửi yêu cầu xác nhận: {e}")
+        update.message.reply_text("Đã xảy ra lỗi khi gửi yêu cầu xác nhận.")
+
+def paidvl_command(update: Update, context: CallbackContext):
+    if update.effective_chat.id != GROUP_CHAT_ID:
+        return
+
+    args = context.args
+    if not args or len(args) != 1 or not args[0].startswith("@"):
+        update.message.reply_text("Vui lòng cung cấp đúng định dạng: /paidvl @username")
+        return
+
+    username = args[0]
+    try:
+        keyboard = [
+            [
+                InlineKeyboardButton("Đã thanh toán", callback_data="paid_yes"),
+                InlineKeyboardButton("Chưa thanh toán", callback_data="paid_no")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        message = bot.send_message(
+            chat_id=GROUP_CHAT_ID,
+            text=f"Yêu cầu xác nhận thanh toán vãng lai cho {username}.",
+            reply_markup=reply_markup
+        )
+        pending_confirmations[message.message_id] = username
+        logger.info(f"Đã gửi yêu cầu xác nhận cho {username} (via /paidvl), message_id: {message.message_id}, pending_confirmations: {pending_confirmations}")
+        print(f"Đã gửi yêu cầu xác nhận cho {username} (via /paidvl), message_id: {message.message_id}, pending_confirmations: {pending_confirmations}")
+
+    except TelegramError as e:
+        logger.error(f"Lỗi khi gửi yêu cầu xác nhận (/paidvl): {e}")
+        print(f"Lỗi khi gửi yêu cầu xác nhận (/paidvl): {e}")
+        update.message.reply_text("Đã xảy ra lỗi khi gửi yêu cầu xác nhận.")
+
+# --- Handler cho callback query từ inline keyboard ---
+def handle_callback_query(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+    logger.info(f"Nhận callback: data={query.data}, from_user={query.from_user.id}, message_id={query.message.message_id}")
+    print(f"Nhận callback: data={query.data}, from_user={query.from_user.id}, message_id={query.message.message_id}")
+
+    data = query.data
+    if data in ["paid_yes", "paid_no"]:
+        try:
+            admins = bot.get_chat_administrators(GROUP_CHAT_ID)
+            admin_ids = [admin.user.id for admin in admins]
+            logger.info(f"Danh sách admin_ids: {admin_ids}")
+            print(f"Danh sách admin_ids: {admin_ids}")
+            if query.from_user.id not in admin_ids:
+                bot.send_message(
+                    chat_id=GROUP_CHAT_ID,
+                    text="Chỉ admin mới có thể xác nhận trạng thái thanh toán."
+                )
+                logger.warning(f"Người không phải admin ({query.from_user.id}) cố gắng xác nhận")
+                print(f"Người không phải admin ({query.from_user.id}) cố gắng xác nhận")
+                return
+
+            message_id = query.message.message_id
+            username = pending_confirmations.get(message_id)
+            logger.info(f"Tra cứu pending_confirmations, message_id={message_id}, username={username}")
+            print(f"Tra cứu pending_confirmations, message_id={message_id}, username={username}")
+            if not username:
+                bot.send_message(
+                    chat_id=GROUP_CHAT_ID,
+                    text="Yêu cầu xác nhận không còn hợp lệ."
+                )
+                logger.warning(f"Không tìm thấy username cho message_id={message_id}")
+                print(f"Không tìm thấy username cho message_id={message_id}")
+                return
+
+            is_paid = data == "paid_yes"
+            status_text = "đã thanh toán" if is_paid else "chưa thanh toán"
+            bot.send_message(
+                chat_id=GROUP_CHAT_ID,
+                text=f"Admin đã xác nhận {username} {status_text}."
+            )
+            logger.info(f"Đã xác nhận {username} {status_text}")
+            print(f"Đã xác nhận {username} {status_text}")
+
+            # Ẩn inline keyboard
+            bot.edit_message_reply_markup(
+                chat_id=GROUP_CHAT_ID,
+                message_id=message_id,
+                reply_markup=None
+            )
+            logger.info(f"Đã ẩn inline keyboard cho message_id={message_id}")
+            print(f"Đã ẩn inline keyboard cho message_id={message_id}")
+
+            # Xóa yêu cầu khỏi pending_confirmations
+            del pending_confirmations[message_id]
+            logger.info(f"Đã xóa pending_confirmations cho message_id={message_id}, pending_confirmations hiện tại: {pending_confirmations}")
+            print(f"Đã xóa pending_confirmations cho message_id={message_id}, pending_confirmations hiện tại: {pending_confirmations}")
+
+        except TelegramError as e:
+            logger.error(f"Lỗi trong handle_callback_query: {e}")
+            print(f"Lỗi trong handle_callback_query: {e}")
+            bot.send_message(
+                chat_id=GROUP_CHAT_ID,
+                text="Đã xảy ra lỗi khi xử lý xác nhận."
+            )
 # --- Handler cho lệnh /help ---
 def help_command(update: Update, context: CallbackContext):
     if update.effective_chat.id != GROUP_CHAT_ID:
@@ -135,6 +282,8 @@ def help_command(update: Update, context: CallbackContext):
         "📋 *Danh sách lệnh của bot:*\n"
         "/start - Gửi poll điểm danh ngay lập tức.\n"
         "/add @username1 @username2 - Thêm các username vào danh sách tag khi gửi poll.\n"
+        "/paidcd @username - Yêu cầu admin xác nhận trạng thái thanh toán cố định.\n"
+        "/paidvl @username - Yêu cầu admin xác nhận trạng thái thanh toán vãng lai\n"
         "/help - Hiển thị hướng dẫn này.\n"
     )
     update.message.reply_text(help_text, parse_mode='Markdown')
@@ -143,6 +292,8 @@ def set_bot_commands():
     commands = [
         BotCommand("start", "Gửi poll điểm danh ngay lập tức"),
         BotCommand("add", "Thêm username vào danh sách tag"),
+        BotCommand("paidcd", "Yêu cầu xác nhận trạng thái thanh toán"),
+        BotCommand("paidvl", "Yêu cầu xác nhận trạng thái thanh toán vl"),
         BotCommand("help", "Hiển thị hướng dẫn sử dụng bot")
     ]
     try:
@@ -153,7 +304,13 @@ def set_bot_commands():
 # --- Gán handler ---
 dispatcher.add_handler(CommandHandler('start', start_command))
 dispatcher.add_handler(CommandHandler('add', add_users))
+dispatcher.add_handler(CommandHandler('paidvl', paidvl_command))
+dispatcher.add_handler(CommandHandler('paidcd', paid_command))
 dispatcher.add_handler(CommandHandler('help', help_command))
+dispatcher.add_handler(CallbackQueryHandler(handle_callback_query))
+logger.info("Đã đăng ký tất cả handlers, bao gồm CallbackQueryHandler")
+print("Đã đăng ký tất cả handlers, bao gồm CallbackQueryHandler")
+
 # --- Lên lịch ---
 timezone = pytz.timezone('Asia/Ho_Chi_Minh')
 
@@ -166,11 +323,25 @@ scheduler.add_job(
     close_poll,
     CronTrigger(hour=17, minute=30, day_of_week='mon,wed,fri', timezone=timezone)
 )
-
+# --- Kiểm tra và xóa webhook để đảm bảo polling ---
+try:
+    webhook_info = bot.get_webhook_info()
+    if webhook_info.url:
+        bot.delete_webhook()
+        logger.info("Đã xóa webhook để sử dụng polling")
+        print("Đã xóa webhook để sử dụng polling")
+    else:
+        logger.info("Không có webhook, sử dụng polling")
+        print("Không có webhook, sử dụng polling")
+except TelegramError as e:
+    logger.error(f"Lỗi khi kiểm tra webhook: {e}")
+    print(f"Lỗi khi kiểm tra webhook: {e}")
 # --- Log ---
 logging.basicConfig()
 # --- Bắt đầu bot ---
 set_bot_commands()
+logger.info("Bắt đầu polling...")
+print("Bắt đầu polling...")
 updater.start_polling()
 # scheduler.start()
 updater.idle()
