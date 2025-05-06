@@ -43,6 +43,20 @@ def save_members():
     with open('members.json', 'w', encoding='utf-8') as f:
         json.dump(members_to_tag, f, ensure_ascii=False, indent=4)
 
+# --- Đọc danh sách user nợ từ file debts.json ---
+def load_debts():
+    try:
+        with open('debts.json', 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            return data.get('debts', [])
+    except FileNotFoundError:
+        return []  # Nếu file không tồn tại, trả về danh sách rỗng
+
+# --- Lưu danh sách user nợ vào file debts.json ---
+def save_debts(debts):
+    with open('debts.json', 'w', encoding='utf-8') as f:
+        json.dump({'debts': debts}, f, ensure_ascii=False, indent=4)
+
 # Danh sách các ngày trong tuần bằng tiếng Việt
 days_of_week = {
     0: 'Thứ Hai',
@@ -56,6 +70,7 @@ days_of_week = {
 
 # --- Danh sách members để tag ---
 members_to_tag = load_members()
+debts = load_debts()
 # --- Hàm xử lý tất cả cập nhật để debug ---
 def debug_update(update: Update, context: CallbackContext):
     logger.info(f"Nhận cập nhật: {update}")
@@ -138,6 +153,46 @@ def add_users(update: Update, context: CallbackContext):
     else:
         update.message.reply_text("Không có user mới hợp lệ để thêm.")
 
+# --- Handler cho lệnh /vl ---
+def vl_command(update: Update, context: CallbackContext):
+    if update.effective_chat.id != GROUP_CHAT_ID:
+        return
+
+    args = context.args
+    if not args or not all(arg.startswith("@") for arg in args):
+        update.message.reply_text("Vui lòng cung cấp ít nhất một username hợp lệ: /vl @username1 @username2 ...")
+        return
+
+    try:
+        added_users = []
+        already_debted = []
+        for username in args:
+            if username not in debts:
+                debts.append(username)
+                added_users.append(username)
+            else:
+                already_debted.append(username)
+
+        if added_users:
+            save_debts(debts)
+            logger.info(f"Đã ghi nợ cho {added_users} (via /vl), debts: {debts}")
+            print(f"Đã ghi nợ cho {added_users} (via /vl), debts: {debts}")
+
+        response = ""
+        if added_users:
+            response += f"Đã ghi nợ cho {' '.join(added_users)}."
+        if already_debted:
+            response += f" Các user đã có trong danh sách nợ: {' '.join(already_debted)}."
+        if not added_users and already_debted:
+            response = f"Tất cả user đã có trong danh sách nợ: {' '.join(already_debted)}."
+
+        update.message.reply_text(response.strip())
+
+    except Exception as e:
+        logger.error(f"Lỗi khi ghi nợ cho {args} (/vl): {e}")
+        print(f"Lỗi khi ghi nợ cho {args} (/vl): {e}")
+        update.message.reply_text("Đã xảy ra lỗi khi ghi nợ.")
+
 # --- Handler cho lệnh /paid ---
 def paid_command(update: Update, context: CallbackContext):
     if update.effective_chat.id != GROUP_CHAT_ID:
@@ -207,6 +262,24 @@ def paidvl_command(update: Update, context: CallbackContext):
         print(f"Lỗi khi gửi yêu cầu xác nhận (/paidvl): {e}")
         update.message.reply_text("Đã xảy ra lỗi khi gửi yêu cầu xác nhận.")
 
+# --- Handler cho lệnh /list_debts ---
+def list_debts_command(update: Update, context: CallbackContext):
+    if update.effective_chat.id != GROUP_CHAT_ID:
+        return
+
+    try:
+        if debts:
+            debts_list = ", ".join(debts)
+            update.message.reply_text(f"Danh sách user đang nợ: {debts_list}")
+        else:
+            update.message.reply_text("Hiện không có user nào đang nợ.")
+        logger.info(f"Đã hiển thị danh sách nợ: {debts}")
+        print(f"Đã hiển thị danh sách nợ: {debts}")
+    except Exception as e:
+        logger.error(f"Lỗi khi hiển thị danh sách nợ: {e}")
+        print(f"Lỗi khi hiển thị danh sách nợ: {e}")
+        update.message.reply_text("Đã xảy ra lỗi khi hiển thị danh sách nợ.")
+
 # --- Handler cho callback query từ inline keyboard ---
 def handle_callback_query(update: Update, context: CallbackContext):
     query = update.callback_query
@@ -252,6 +325,14 @@ def handle_callback_query(update: Update, context: CallbackContext):
             logger.info(f"Đã xác nhận {username} {status_text}")
             print(f"Đã xác nhận {username} {status_text}")
 
+            # Nếu là /paidvl và xác nhận "Đã thanh toán", xóa nợ
+            if message_id in pending_confirmations and is_paid:
+                if username in debts:
+                    debts.remove(username)
+                    save_debts(debts)
+                    logger.info(f"Đã xóa nợ cho {username}, debts hiện tại: {debts}")
+                    print(f"Đã xóa nợ cho {username}, debts hiện tại: {debts}")
+
             # Ẩn inline keyboard
             bot.edit_message_reply_markup(
                 chat_id=GROUP_CHAT_ID,
@@ -282,8 +363,10 @@ def help_command(update: Update, context: CallbackContext):
         "📋 *Danh sách lệnh của bot:*\n"
         "/start - Gửi poll điểm danh ngay lập tức.\n"
         "/add @username1 @username2 - Thêm các username vào danh sách tag khi gửi poll.\n"
-        "/paidcd @username - Yêu cầu admin xác nhận trạng thái thanh toán cố định.\n"
+        # "/paidcd @username - Yêu cầu admin xác nhận trạng thái thanh toán cố định.\n"
+        "/vl @username - Ghi nợ cho user.\n"
         "/paidvl @username - Yêu cầu admin xác nhận trạng thái thanh toán vãng lai\n"
+        "/list_debts - Hiển thị danh sách user đang nợ.\n"
         "/help - Hiển thị hướng dẫn này.\n"
     )
     update.message.reply_text(help_text, parse_mode='Markdown')
@@ -292,8 +375,10 @@ def set_bot_commands():
     commands = [
         BotCommand("start", "Gửi poll điểm danh ngay lập tức"),
         BotCommand("add", "Thêm username vào danh sách tag"),
-        BotCommand("paidcd", "Yêu cầu xác nhận trạng thái thanh toán"),
+        BotCommand("vl", "Ghi nợ cho user"),
+        # BotCommand("paidcd", "Yêu cầu xác nhận trạng thái thanh toán"),
         BotCommand("paidvl", "Yêu cầu xác nhận trạng thái thanh toán vl"),
+        BotCommand("list_debts", "Hiển thị danh sách user đang nợ"),
         BotCommand("help", "Hiển thị hướng dẫn sử dụng bot")
     ]
     try:
@@ -304,8 +389,10 @@ def set_bot_commands():
 # --- Gán handler ---
 dispatcher.add_handler(CommandHandler('start', start_command))
 dispatcher.add_handler(CommandHandler('add', add_users))
+dispatcher.add_handler(CommandHandler('vl', vl_command))
 dispatcher.add_handler(CommandHandler('paidvl', paidvl_command))
-dispatcher.add_handler(CommandHandler('paidcd', paid_command))
+# dispatcher.add_handler(CommandHandler('paidcd', paid_command))
+dispatcher.add_handler(CommandHandler('list_debts', list_debts_command))
 dispatcher.add_handler(CommandHandler('help', help_command))
 dispatcher.add_handler(CallbackQueryHandler(handle_callback_query))
 logger.info("Đã đăng ký tất cả handlers, bao gồm CallbackQueryHandler")
