@@ -366,7 +366,7 @@ def help_command(update: Update, context: CallbackContext):
         # "/paidcd @username - Yêu cầu admin xác nhận trạng thái thanh toán cố định.\n"
         "/vl @username - Ghi nợ cho user.\n"
         "/paidvl @username - Yêu cầu admin xác nhận trạng thái thanh toán vãng lai\n"
-        "/list_debts - Hiển thị danh sách user đang nợ.\n"
+        "/list_no - Hiển thị danh sách user đang nợ.\n"
         "/help - Hiển thị hướng dẫn này.\n"
     )
     update.message.reply_text(help_text, parse_mode='Markdown')
@@ -378,7 +378,7 @@ def set_bot_commands():
         BotCommand("vl", "Ghi nợ cho user"),
         # BotCommand("paidcd", "Yêu cầu xác nhận trạng thái thanh toán"),
         BotCommand("paidvl", "Yêu cầu xác nhận trạng thái thanh toán vl"),
-        BotCommand("list_debts", "Hiển thị danh sách user đang nợ"),
+        BotCommand("list_no", "Hiển thị danh sách user đang nợ"),
         BotCommand("help", "Hiển thị hướng dẫn sử dụng bot")
     ]
     try:
@@ -392,7 +392,7 @@ dispatcher.add_handler(CommandHandler('add', add_users))
 dispatcher.add_handler(CommandHandler('vl', vl_command))
 dispatcher.add_handler(CommandHandler('paidvl', paidvl_command))
 # dispatcher.add_handler(CommandHandler('paidcd', paid_command))
-dispatcher.add_handler(CommandHandler('list_debts', list_debts_command))
+dispatcher.add_handler(CommandHandler('list_no', list_debts_command))
 dispatcher.add_handler(CommandHandler('help', help_command))
 dispatcher.add_handler(CallbackQueryHandler(handle_callback_query))
 logger.info("Đã đăng ký tất cả handlers, bao gồm CallbackQueryHandler")
