@@ -1,3 +1,5 @@
+import os
+
 from telegram import Bot, Update, BotCommand, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.error import TelegramError
 from apscheduler.schedulers.blocking import BlockingScheduler
@@ -17,8 +19,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- Cấu hình ---
-BOT_TOKEN = '7696186849:AAHUow8NJaYAkR1Zyminds-Sh5juF0MLY2U'
-GROUP_CHAT_ID = -1002548146910  # Thay bằng ID group của bạn
+BOT_TOKEN = os.getenv('BOT_TOKEN')
+GROUP_CHAT_ID = -4040600344  # Thay bằng ID group của bạn
 
 # --- Khởi tạo bot và scheduler ---
 bot = Bot(token=BOT_TOKEN)
