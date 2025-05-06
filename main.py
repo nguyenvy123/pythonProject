@@ -359,18 +359,23 @@ def help_command(update: Update, context: CallbackContext):
     if update.effective_chat.id != GROUP_CHAT_ID:
         return
 
-    help_text = (
-        "📋 *Danh sách lệnh của bot:*\n"
-        "/start - Gửi poll điểm danh ngay lập tức.\n"
-        "/add @username1 @username2 - Thêm các username vào danh sách tag khi gửi poll.\n"
-        # "/paidcd @username - Yêu cầu admin xác nhận trạng thái thanh toán cố định.\n"
-        "/vl @username - Ghi nợ cho user.\n"
-        "/paidvl @username - Yêu cầu admin xác nhận trạng thái thanh toán vãng lai\n"
-        "/list_no - Hiển thị danh sách user đang nợ.\n"
-        "/help - Hiển thị hướng dẫn này.\n"
-    )
-    update.message.reply_text(help_text, parse_mode='Markdown')
+    try:
+        help_text = (
+            "📋 *Danh sách lệnh của bot:*\n"
+            "/start - Gửi poll điểm danh ngay lập tức.\n"
+            "/add @username1 @username2 - Thêm các username vào danh sách tag khi gửi poll.\n"
+            "/vl @username1 @username2  - Ghi nợ cho nhiều user.\n"
+            "/paidvl @username - Yêu cầu admin xác nhận trạng thái thanh toán và xóa nợ cho user.\n"
+            "/list_no - Hiển thị danh sách user đang nợ.\n"
+            "/help - Hiển thị hướng dẫn này.\n"
+            "\n"
+        )
 
+        update.message.reply_text(help_text)
+    except TelegramError as e:
+        logger.error(f"Lỗi khi gửi help_text: {e}")
+        print(f"Lỗi khi gửi help_text: {e}")
+        update.message.reply_text("Đã xảy ra lỗi khi hiển thị hướng dẫn. Vui lòng thử lại sau.")
 def set_bot_commands():
     commands = [
         BotCommand("start", "Gửi poll điểm danh ngay lập tức"),
