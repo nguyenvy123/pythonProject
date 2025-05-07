@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: main
+    env: python
+    plan: free
+    buildCommand: |
+      apt-get update && apt-get install -y gcc python3-dev
+      pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: BOT_TOKEN
+        value: 7696186849:AAHUow8NJaYAkR1Zyminds-Sh5juF0MLY2U
+      - key: PYTHON_VERSION
+        value: 3.8
